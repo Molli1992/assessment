@@ -201,8 +201,8 @@ export const createRecipe = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "'title' must be a string." });
     }
 
-    if (typeof cuisine !== "string") {
-      return res.status(400).json({ message: "'cuisine' must be a string." });
+    if (typeof cuisine !== "number" || isNaN(cuisine)) {
+      return res.status(400).json({ message: "'cuisine' must be a id." });
     }
 
     if (typeof difficulty !== "string") {
@@ -351,8 +351,8 @@ export const updateRecipe = async (req: Request, res: Response) => {
     }
 
     if (cuisine !== undefined) {
-      if (typeof cuisine !== "string")
-        return res.status(400).json({ message: "'cuisine' must be a string." });
+      if (typeof cuisine !== "number" || isNaN(cookTime))
+        return res.status(400).json({ message: "'cuisine' must be a id." });
       fieldsToUpdate.push("cuisine = ?");
       values.push(cuisine);
     }
