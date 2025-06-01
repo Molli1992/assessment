@@ -201,8 +201,25 @@ export const createRecipe = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "'title' must be a string." });
     }
 
-    if (typeof cuisine !== "number" || isNaN(cuisine)) {
-      return res.status(400).json({ message: "'cuisine' must be a id." });
+    const cuisineMap: { [key: number]: string } = {
+      1: "Italian",
+      2: "Indian",
+      3: "American",
+      4: "Mexican",
+      5: "Thai",
+      6: "Greek",
+      7: "Japanese",
+      8: "British",
+      9: "Moroccan",
+      10: "Korean",
+      11: "French",
+    };
+
+    if (!cuisineMap[cuisine]) {
+      return res.status(400).json({
+        message: `'cuisine' must be an integer between 1 and 11, corresponding to a valid cuisine.`,
+        validCuisines: cuisineMap,
+      });
     }
 
     if (typeof difficulty !== "string") {
@@ -351,8 +368,27 @@ export const updateRecipe = async (req: Request, res: Response) => {
     }
 
     if (cuisine !== undefined) {
-      if (typeof cuisine !== "number" || isNaN(cookTime))
-        return res.status(400).json({ message: "'cuisine' must be a id." });
+      const cuisineMap: { [key: number]: string } = {
+        1: "Italian",
+        2: "Indian",
+        3: "American",
+        4: "Mexican",
+        5: "Thai",
+        6: "Greek",
+        7: "Japanese",
+        8: "British",
+        9: "Moroccan",
+        10: "Korean",
+        11: "French",
+      };
+
+      if (!cuisineMap[cuisine]) {
+        return res.status(400).json({
+          message: `'cuisine' must be an integer between 1 and 11, corresponding to a valid cuisine.`,
+          validCuisines: cuisineMap,
+        });
+      }
+
       fieldsToUpdate.push("cuisine = ?");
       values.push(cuisine);
     }
