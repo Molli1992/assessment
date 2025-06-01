@@ -1,6 +1,5 @@
 "use client";
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 
 interface Recipe {
@@ -16,49 +15,114 @@ interface Recipe {
   description: string;
 }
 
+interface FetchRecipesResponse {
+  recipes: Recipe[];
+  totalCount: number;
+}
+
 export default function Home() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCuisine, setSelectedCuisine] = useState("");
+  const [allCuisines, setAllCuisines] = useState<string[]>([]);
+
   const recipesPerPage = 6;
 
-  useEffect(() => {
-    fetchRecipes();
-  }, []);
-
-  const fetchRecipes = async () => {
+  const fetchRecipes = useCallback(async () => {
+    setLoading(true);
     try {
-      const response = await fetch("http://localhost:3001/recipes");
+      const params = new URLSearchParams();
+      params.append("page", String(currentPage));
+      params.append("limit", String(recipesPerPage));
+
+      if (searchTerm) {
+        params.append("title", searchTerm);
+      }
+      if (selectedCuisine) {
+        params.append("cuisine", selectedCuisine);
+      }
+
+      const response = await fetch(
+        `http://localhost:3001/api/recipes?${params.toString()}`
+      );
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.message || `Error fetching recipes: ${response.statusText}`
+        );
+      }
+
       const data = await response.json();
-      setRecipes(data);
+
+      if (typeof data.totalCount === "number" && Array.isArray(data.recipes)) {
+        setRecipes(data.recipes);
+        setTotalPages(Math.ceil(data.totalCount / recipesPerPage));
+      } else if (Array.isArray(data)) {
+        console.warn(
+          "CRITICAL: Backend did not return 'totalCount'. Pagination will be guesswork and likely incorrect. Please update your backend to return 'totalCount' along with the recipes array (e.g., { recipes: [...], totalCount: ... })."
+        );
+        setRecipes(data);
+        const itemsReturnedOnPage = data.length;
+
+        if (itemsReturnedOnPage === 0) {
+          if (currentPage === 1) {
+            setTotalPages(0);
+          } else {
+            setTotalPages(currentPage - 1);
+          }
+        } else if (itemsReturnedOnPage < recipesPerPage) {
+          setTotalPages(currentPage);
+        } else {
+          setTotalPages(currentPage + 1);
+        }
+      } else {
+        console.error("Unexpected data format from backend:", data);
+        setRecipes([]);
+        setTotalPages(0);
+      }
     } catch (error) {
       console.error("Error fetching recipes:", error);
+      setRecipes([]);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, searchTerm, selectedCuisine, recipesPerPage]);
 
-  const filteredRecipes = recipes.filter((recipe) => {
-    const matchesSearch =
-      recipe.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      recipe.ingredients.some((ingredient) =>
-        ingredient.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    const matchesCuisine =
-      !selectedCuisine || recipe.cuisine === selectedCuisine;
-    return matchesSearch && matchesCuisine;
-  });
+  useEffect(() => {
+    const fetchAllCuisines = async () => {
+      try {
+        const response = await fetch("http://localhost:3001/api/recipes");
+        const allRecipeData: Recipe[] | FetchRecipesResponse =
+          await response.json();
 
-  const totalPages = Math.ceil(filteredRecipes.length / recipesPerPage);
-  const startIndex = (currentPage - 1) * recipesPerPage;
-  const paginatedRecipes = filteredRecipes.slice(
-    startIndex,
-    startIndex + recipesPerPage
-  );
+        let cuisinesToSet: string[];
+        if (Array.isArray(allRecipeData)) {
+          cuisinesToSet = [
+            ...new Set(allRecipeData.map((recipe) => recipe.cuisine)),
+          ].sort();
+        } else if (allRecipeData && Array.isArray(allRecipeData.recipes)) {
+          cuisinesToSet = [
+            ...new Set(allRecipeData.recipes.map((recipe) => recipe.cuisine)),
+          ].sort();
+        } else {
+          cuisinesToSet = [];
+        }
+        setAllCuisines(cuisinesToSet);
+      } catch (error) {
+        console.error("Error fetching cuisines:", error);
+        setAllCuisines([]);
+      }
+    };
+    fetchAllCuisines();
+  }, []);
 
-  const cuisines = [...new Set(recipes.map((recipe) => recipe.cuisine))];
+  useEffect(() => {
+    fetchRecipes();
+  }, [fetchRecipes]);
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
@@ -73,17 +137,8 @@ export default function Home() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h1 className="text-3xl font-bold text-gray-900">
@@ -95,16 +150,16 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Search and Filters */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex flex-col md:flex-row gap-4 mb-8">
           <div className="flex-1">
             <input
               type="text"
-              placeholder="Search recipes or ingredients..."
+              placeholder="Search recipes by title..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
+                setSelectedCuisine("");
                 setCurrentPage(1);
               }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
@@ -114,12 +169,13 @@ export default function Home() {
             value={selectedCuisine}
             onChange={(e) => {
               setSelectedCuisine(e.target.value);
+              setSearchTerm("");
               setCurrentPage(1);
             }}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
           >
             <option value="">All Cuisines</option>
-            {cuisines.map((cuisine) => (
+            {allCuisines.map((cuisine) => (
               <option key={cuisine} value={cuisine}>
                 {cuisine}
               </option>
@@ -127,96 +183,111 @@ export default function Home() {
           </select>
         </div>
 
-        {/* Recipe Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {paginatedRecipes.map((recipe) => (
-            <div
-              key={recipe.id}
-              className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
-            >
-              <div className="relative h-48">
-                <Image
-                  src={recipe.image}
-                  alt={recipe.title}
-                  fill
-                  className="object-cover"
-                />
-                <div className="absolute top-2 right-2">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(
-                      recipe.difficulty
-                    )}`}
-                  >
-                    {recipe.difficulty}
-                  </span>
-                </div>
-              </div>
-              <div className="p-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {recipe.title}
-                </h3>
-                <p className="text-gray-600 text-sm mb-3">
-                  {recipe.description}
-                </p>
-                <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
-                  <span className="flex items-center">
-                    <span className="mr-1">🍽️</span>
-                    {recipe.cuisine}
-                  </span>
-                  <span className="flex items-center">
-                    <span className="mr-1">⏱️</span>
-                    {recipe.cookTime} min
-                  </span>
-                  <span className="flex items-center">
-                    <span className="mr-1">👥</span>
-                    {recipe.servings}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <span className="text-yellow-400 mr-1">⭐</span>
-                    <span className="text-sm text-gray-600">
-                      {recipe.rating}
+        {recipes.length === 0 && (
+          <div className="text-center my-8 text-gray-500">
+            <p className="text-xl">No recipes found.</p>
+            <p>Try adjusting your search terms or filters.</p>
+          </div>
+        )}
+
+        {recipes.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {recipes.map((recipe, index) => (
+              <div
+                key={recipe.id}
+                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
+              >
+                <div className="relative h-48">
+                  <Image
+                    src={recipe.image}
+                    alt={recipe.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    className="object-cover"
+                    priority={index < recipesPerPage / 2}
+                  />
+                  <div className="absolute top-2 right-2">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(
+                        recipe.difficulty
+                      )}`}
+                    >
+                      {recipe.difficulty}
                     </span>
                   </div>
-                  <button className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-600 transition-colors duration-200">
-                    View Recipe
-                  </button>
+                </div>
+                <div className="p-4">
+                  <h3
+                    className="text-lg font-semibold text-gray-900 mb-2 truncate"
+                    title={recipe.title}
+                  >
+                    {recipe.title}
+                  </h3>
+                  <p className="text-gray-600 text-sm mb-3 h-20 overflow-y-auto">
+                    {recipe.description}
+                  </p>
+                  <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
+                    <span className="flex items-center">
+                      <span className="mr-1">🍽️</span>
+                      {recipe.cuisine}
+                    </span>
+                    <span className="flex items-center">
+                      <span className="mr-1">⏱️</span>
+                      {recipe.cookTime} min
+                    </span>
+                    <span className="flex items-center">
+                      <span className="mr-1">👥</span>
+                      {recipe.servings}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="text-yellow-400 mr-1">⭐</span>
+                      <span className="text-sm text-gray-600">
+                        {recipe.rating}
+                      </span>
+                    </div>
+                    <button className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-600 transition-colors duration-200">
+                      View Recipe
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
+        {totalPages > 0 && (
           <div className="flex justify-center space-x-2">
             <button
               onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              disabled={currentPage === 1 || loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
             >
               Previous
             </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`px-4 py-2 border rounded-lg ${
-                  currentPage === page
-                    ? "bg-orange-500 text-white border-orange-500"
-                    : "border-gray-300 hover:bg-gray-50"
-                }`}
-              >
-                {page}
-              </button>
-            ))}
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+              (pageNumber) => (
+                <button
+                  key={pageNumber}
+                  onClick={() => setCurrentPage(pageNumber)}
+                  disabled={loading} // Disabled while loading
+                  className={`px-4 py-2 border rounded-lg ${
+                    currentPage === pageNumber
+                      ? "bg-orange-500 text-white border-orange-500" // Active page style
+                      : "border-gray-300 hover:bg-gray-50"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {pageNumber}
+                </button>
+              )
+            )}
             <button
               onClick={() =>
                 setCurrentPage((prev) => Math.min(prev + 1, totalPages))
               }
-              disabled={currentPage === totalPages}
-              className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              disabled={currentPage === totalPages || loading}
+              className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
             >
               Next
             </button>
