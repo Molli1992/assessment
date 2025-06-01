@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import Swal from "sweetalert2";
+import "sweetalert2/dist/sweetalert2.min.css";
 
 interface Recipe {
   id: number;
@@ -137,6 +139,35 @@ export default function Home() {
     }
   };
 
+  const showIngredientsModal = (recipe: Recipe) => {
+    Swal.fire({
+      title: `<strong>${recipe.title}</strong>`,
+      html: `
+      <div style="
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      ">
+        <p style="text-align: center; font-weight: bold; margin-bottom: 0.5rem;">
+          Ingredients:
+        </p>
+        <ul style="text-align: left; margin: 0 auto; max-width: 300px; padding-left: 1rem;">
+          ${recipe.ingredients
+            .map((ingredient) => `<li>${ingredient}</li>`)
+            .join("")}
+        </ul>
+      </div>
+    `,
+      icon: "info",
+      confirmButtonText: "Close",
+      customClass: {
+        popup: "rounded-lg p-6",
+      },
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
@@ -247,7 +278,10 @@ export default function Home() {
                         {recipe.rating}
                       </span>
                     </div>
-                    <button className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-600 transition-colors duration-200">
+                    <button
+                      onClick={() => showIngredientsModal(recipe)}
+                      className="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-600 transition-colors duration-200 cursor-pointer"
+                    >
                       View Recipe
                     </button>
                   </div>
@@ -275,7 +309,7 @@ export default function Home() {
                   className={`px-4 py-2 border rounded-lg ${
                     currentPage === pageNumber
                       ? "bg-orange-500 text-white border-orange-500" // Active page style
-                      : "border-gray-300 hover:bg-gray-50"
+                      : "border-gray-300 hover:bg-gray-50 cursor-pointer"
                   } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {pageNumber}
