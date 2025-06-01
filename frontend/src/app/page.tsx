@@ -22,6 +22,11 @@ interface FetchRecipesResponse {
   totalCount: number;
 }
 
+interface Cuisine {
+  id: number;
+  name: string;
+}
+
 export default function Home() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +34,7 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCuisine, setSelectedCuisine] = useState("");
-  const [allCuisines, setAllCuisines] = useState<string[]>([]);
+  const [allCuisines, setAllCuisines] = useState<Cuisine[]>([]);
 
   const recipesPerPage = 6;
 
@@ -97,23 +102,11 @@ export default function Home() {
   useEffect(() => {
     const fetchAllCuisines = async () => {
       try {
-        const response = await fetch("http://localhost:3001/api/recipes");
-        const allRecipeData: Recipe[] | FetchRecipesResponse =
-          await response.json();
+        const response = await fetch("http://localhost:3001/api/cuisine");
+        if (!response.ok) throw new Error("Network response was not ok");
+        const data = await response.json();
 
-        let cuisinesToSet: string[];
-        if (Array.isArray(allRecipeData)) {
-          cuisinesToSet = [
-            ...new Set(allRecipeData.map((recipe) => recipe.cuisine)),
-          ].sort();
-        } else if (allRecipeData && Array.isArray(allRecipeData.recipes)) {
-          cuisinesToSet = [
-            ...new Set(allRecipeData.recipes.map((recipe) => recipe.cuisine)),
-          ].sort();
-        } else {
-          cuisinesToSet = [];
-        }
-        setAllCuisines(cuisinesToSet);
+        setAllCuisines(data);
       } catch (error) {
         console.error("Error fetching cuisines:", error);
         setAllCuisines([]);
@@ -207,8 +200,8 @@ export default function Home() {
           >
             <option value="">All Cuisines</option>
             {allCuisines.map((cuisine) => (
-              <option key={cuisine} value={cuisine}>
-                {cuisine}
+              <option key={cuisine.id} value={cuisine.id}>
+                {cuisine.name}
               </option>
             ))}
           </select>
